@@ -60,7 +60,6 @@ npm run tauri dev
 
 ```
 Local/
-├── landing/              Suite overview landing page
 ├── local-ui/             Shared design tokens, components, hooks (git subtree source)
 ├── space_logo.js         ASCII logo generator (ANSI Shadow figlet)
 ├── AGENTS.md             Agent notes for the suite
