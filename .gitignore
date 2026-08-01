@@ -62,3 +62,6 @@ humanize/
 # Internal planning/agent docs (not part of source)
 AGENTS.md
 PLAN.md
+
+# Built installers (released via GitHub Releases, not tracked in repo)
+release-assets/
