@@ -1,0 +1,332 @@
+// ============================================================
+// Reel — gif_encoder.rs
+// GIF encoding using the pure-Rust `gif` crate.
+// Reads frames via Media Foundation source reader, converts to
+// indexed color, and writes an animated GIF.
+// ============================================================
+
+#![cfg(target_os = "windows")]
+
+use std::io::BufWriter;
+use std::time::Instant;
+
+use windows::core::HSTRING;
+use windows::Win32::Media::MediaFoundation::{
+    IMFMediaBuffer, IMFSample, MFCreateSourceReaderFromURL, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
+    MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM,
+};
+
+use crate::commands::convert::{ConvertOptions, ConvertResult};
+
+/// Convert a video file to an animated GIF.
+pub fn convert_to_gif(
+    input_path: &str,
+    output_path: &str,
+    options: &ConvertOptions,
+    input_size: u64,
+    start: Instant,
+) -> ConvertResult {
+    match unsafe { convert_to_gif_inner(input_path, output_path, options) } {
+        Ok(output_size) => ConvertResult {
+            success: true,
+            output_path: output_path.to_string(),
+            output_size,
+            input_size,
+            duration_ms: start.elapsed().as_millis() as u64,
+            error: None,
+        },
+        Err(e) => ConvertResult {
+            success: false,
+            output_path: output_path.to_string(),
+            output_size: 0,
+            input_size,
+            duration_ms: start.elapsed().as_millis() as u64,
+            error: Some(e),
+        },
+    }
+}
+
+unsafe fn convert_to_gif_inner(
+    input_path: &str,
+    output_path: &str,
+    options: &ConvertOptions,
+) -> Result<u64, String> {
+    // Create source reader
+    let hstr = HSTRING::from(input_path);
+    let reader = MFCreateSourceReaderFromURL(&hstr, None)
+        .map_err(|e| format!("Failed to create source reader: {e}"))?;
+
+    // Select only video
+    reader
+        .SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false)
+        .map_err(|e| format!("Deselect streams: {e}"))?;
+    reader
+        .SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, true)
+        .map_err(|e| format!("Select video: {e}"))?;
+
+    // Get input dimensions
+    let vtype = reader
+        .GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32)
+        .map_err(|e| format!("Get video type: {e}"))?;
+
+    let frame_size = vtype
+        .GetUINT64(&MF_MT_FRAME_SIZE)
+        .map_err(|e| format!("Get frame size: {e}"))?;
+    let in_w = (frame_size >> 32) as u32;
+    let in_h = frame_size as u32;
+
+    // Calculate output dimensions (GIF max 65535, but practically keep small)
+    let (out_w, out_h) = calculate_gif_size(in_w, in_h, options.width, options.height);
+
+    // Get framerate
+    let frame_rate = vtype.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or((30u64 << 32) | 1);
+    let fps_num = (frame_rate >> 32) as u32;
+    let fps_den = (frame_rate & 0xFFFFFFFF) as u32;
+    let fps = if fps_den > 0 {
+        fps_num as f64 / fps_den as f64
+    } else {
+        30.0
+    };
+
+    // Frame delay in centiseconds (GIF uses 1/100th second units)
+    let target_fps = if options.fps > 0 {
+        options.fps as f64
+    } else {
+        fps.min(15.0)
+    };
+    let target_fps = target_fps.min(15.0); // GIFs shouldn't be too fast
+    let frame_delay_cs = (100.0 / target_fps).round() as u16;
+    let frame_delay_cs = frame_delay_cs.max(2); // Min 2cs
+
+    // Sample every Nth frame to hit target fps
+    let frame_step = (fps / target_fps).round().max(1.0) as u64;
+
+    // Create GIF file
+    let file = std::fs::File::create(output_path)
+        .map_err(|e| format!("Create output file: {e}"))?;
+    let mut writer = BufWriter::new(file);
+
+    // We'll collect frames first, then write them all at once to avoid
+    // borrow issues with the encoder holding a mutable ref to writer.
+    let mut frames: Vec<(u16, u16, gif::Frame<'static>)> = Vec::new();
+
+    let mut read_count: u64 = 0;
+    let max_frames = if options.trim_end > 0.0 {
+        (options.trim_end * target_fps) as u64
+    } else {
+        500 // Limit GIF to ~500 frames for size
+    };
+    let skip_frames = (options.trim_start * fps) as u64;
+
+    loop {
+        let mut stream_index: u32 = 0;
+        let mut stream_flags: u32 = 0;
+        let mut timestamp: i64 = 0;
+        let mut sample: Option<IMFSample> = None;
+
+        let hr = reader.ReadSample(
+            MF_SOURCE_READER_ALL_STREAMS.0 as u32,
+            0, // default control flags
+            Some(&mut stream_index),
+            Some(&mut stream_flags),
+            Some(&mut timestamp),
+            Some(&mut sample),
+        );
+
+        if let Err(e) = hr {
+            return Err(format!("ReadSample: {e}"));
+        }
+
+        if stream_flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            break;
+        }
+
+        if stream_flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0 {
+            continue;
+        }
+
+        let sample = match sample {
+            Some(s) => s,
+            None => continue,
+        };
+
+        read_count += 1;
+
+        // Skip frames for trim start and frame stepping
+        if read_count <= skip_frames || (read_count - skip_frames) % frame_step != 0 {
+            continue;
+        }
+
+        if frames.len() as u64 >= max_frames {
+            break;
+        }
+
+        // Extract pixel data from the sample
+        let pixels = extract_frame_pixels(&sample, out_w, out_h)?;
+        if pixels.is_empty() {
+            continue;
+        }
+
+        // Convert RGB to indexed color frame
+        let mut frame = if out_w <= 256 && out_h <= 256 {
+            gif::Frame::from_rgb(out_w as u16, out_h as u16, &mut pixels.clone())
+        } else {
+            let (sw, sh, small_pixels) = downscale_rgb(&pixels, out_w, out_h, 480);
+            gif::Frame::from_rgb(sw as u16, sh as u16, &mut small_pixels.clone())
+        };
+        frame.delay = frame_delay_cs;
+        frames.push((frame.width, frame.height, frame));
+    }
+
+    // Now write all frames to the GIF
+    if !frames.is_empty() {
+        let (fw, fh, _) = frames[0];
+        let mut enc = gif::Encoder::new(&mut writer, fw, fh, &[])
+            .map_err(|e| format!("Create GIF encoder: {e}"))?;
+        enc.set_repeat(gif::Repeat::Infinite)
+            .map_err(|e| format!("Set repeat: {e}"))?;
+        for (_, _, frame) in &mut frames {
+            enc.write_frame(frame)
+                .map_err(|e| format!("Write GIF frame: {e}"))?;
+        }
+    }
+
+    drop(writer);
+
+    let output_size = std::fs::metadata(output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    Ok(output_size)
+}
+
+/// Extract pixel data from an MF sample, converting to RGB.
+unsafe fn extract_frame_pixels(
+    sample: &IMFSample,
+    target_w: u32,
+    target_h: u32,
+) -> Result<Vec<u8>, String> {
+    // Convert buffer to a single contiguous buffer
+    let buffer: IMFMediaBuffer = sample
+        .ConvertToContiguousBuffer()
+        .map_err(|e| format!("ConvertToContiguousBuffer: {e}"))?;
+
+    // Lock the buffer
+    let mut data_ptr: *mut u8 = std::ptr::null_mut();
+    let mut max_len: u32 = 0;
+    let mut cur_len: u32 = 0;
+    buffer
+        .Lock(&mut data_ptr, Some(&mut max_len), Some(&mut cur_len))
+        .map_err(|e| format!("Lock buffer: {e}"))?;
+
+    let data_slice = std::slice::from_raw_parts(data_ptr, cur_len as usize);
+
+    // Try NV12 → RGB conversion (MF commonly outputs NV12)
+    let pixels = if cur_len as usize >= (target_w * target_h * 3 / 2) as usize {
+        nv12_to_rgb(data_slice, target_w, target_h)
+    } else if cur_len as usize >= (target_w * target_h * 4) as usize {
+        // Assume RGB32
+        data_slice[..(target_w * target_h * 4) as usize].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let _ = buffer.Unlock();
+    Ok(pixels)
+}
+
+/// Convert NV12 to RGB (basic conversion for GIF quality)
+fn nv12_to_rgb(data: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let w = width as usize;
+    let h = height as usize;
+    let y_size = w * h;
+    let mut rgb = Vec::with_capacity(w * h * 3);
+
+    if data.len() < y_size + y_size / 2 {
+        return rgb;
+    }
+
+    let y_plane = &data[..y_size];
+    let uv_plane = &data[y_size..];
+
+    for j in 0..h {
+        for i in 0..w {
+            let y = y_plane[j * w + i] as i32;
+            let uv_row = j / 2;
+            let uv_col = i / 2;
+            let u = uv_plane[uv_row * w + uv_col * 2] as i32 - 128;
+            let v = uv_plane[uv_row * w + uv_col * 2 + 1] as i32 - 128;
+
+            let r = (y + 1_403 * v).clamp(0, 255) as u8;
+            let g = (y - 347 * u - 714 * v).clamp(0, 255) as u8;
+            let b = (y + 1_770 * u).clamp(0, 255) as u8;
+
+            rgb.push(r);
+            rgb.push(g);
+            rgb.push(b);
+        }
+    }
+
+    rgb
+}
+
+/// Downscale RGB data to fit within max_dim
+fn downscale_rgb(pixels: &[u8], w: u32, h: u32, max_dim: u32) -> (u32, u32, Vec<u8>) {
+    let scale = if w > h {
+        max_dim as f64 / w as f64
+    } else {
+        max_dim as f64 / h as f64
+    };
+    let scale = scale.min(1.0); // Don't upscale
+
+    let new_w = (w as f64 * scale).round() as u32;
+    let new_h = (h as f64 * scale).round() as u32;
+    let new_w = new_w.max(1);
+    let new_h = new_h.max(1);
+
+    let mut out = Vec::with_capacity((new_w * new_h * 3) as usize);
+
+    for j in 0..new_h {
+        for i in 0..new_w {
+            let src_i = (i as f64 / scale) as u32;
+            let src_j = (j as f64 / scale) as u32;
+            let src_i = src_i.min(w - 1);
+            let src_j = src_j.min(h - 1);
+
+            let idx = ((src_j * w + src_i) * 3) as usize;
+            if idx + 2 < pixels.len() {
+                out.push(pixels[idx]);
+                out.push(pixels[idx + 1]);
+                out.push(pixels[idx + 2]);
+            } else {
+                out.push(0);
+                out.push(0);
+                out.push(0);
+            }
+        }
+    }
+
+    (new_w, new_h, out)
+}
+
+fn calculate_gif_size(in_w: u32, in_h: u32, target_w: u32, target_h: u32) -> (u32, u32) {
+    if target_w > 0 && target_h > 0 {
+        return (target_w.min(65535), target_h.min(65535));
+    }
+    if target_w > 0 {
+        let h = (in_h as f64 * target_w as f64 / in_w as f64).round() as u32;
+        return (target_w.min(65535), h.min(65535));
+    }
+    if target_h > 0 {
+        let w = (in_w as f64 * target_h as f64 / in_h as f64).round() as u32;
+        return (w.min(65535), target_h.min(65535));
+    }
+    // Default GIF size: cap at 480px wide
+    let max_w = 480u32;
+    if in_w <= max_w {
+        return (in_w, in_h);
+    }
+    let h = (in_h as f64 * max_w as f64 / in_w as f64).round() as u32;
+    (max_w, h)
+}

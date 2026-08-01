@@ -1,0 +1,158 @@
+// ============================================================
+// Reel — commands/convert.rs
+// Video conversion commands. Currently stubbed — the codec
+// pipeline will be implemented per the plan in PLAN.md:
+//
+//   - H.264/H.265 encode: Windows Media Foundation (OS-licensed)
+//   - AV1 encode: rav1e crate (royalty-free, Apache-2.0)
+//   - VP8/VP9 encode: libvpx via vpx crate (royalty-free, BSD)
+//   - Opus audio: opus crate (BSD)
+//   - Vorbis audio: vorbis crate (BSD)
+//   - GIF/WebP anim: pure Rust (gif / webp crates)
+//   - No FFmpeg bundled. No GPL dependencies.
+//
+// Probe (metadata reading) will use the mp4parse / matroska-demux
+// crates for container parsing, plus platform APIs for codec info.
+// ============================================================
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::Instant;
+
+// ---------- Types matching the frontend (src/lib/tauri.ts) ----------
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum OutputFormat {
+    Mp4H264,
+    Mp4H265,
+    WebmVp9,
+    WebmVp8,
+    MkvAv1,
+    MkvVp9,
+    Gif,
+    WebpAnim,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertOptions {
+    pub format: OutputFormat,
+    pub width: u32,
+    pub height: u32,
+    pub video_bitrate: u32,
+    pub fps: u32,
+    pub audio_bitrate: u32,
+    pub trim_start: f64,
+    pub trim_end: f64,
+    pub no_audio: bool,
+    pub no_video: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertResult {
+    pub success: bool,
+    pub output_path: String,
+    pub output_size: u64,
+    pub input_size: u64,
+    pub duration_ms: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ProbeResult {
+    pub duration_sec: f64,
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    pub has_audio: bool,
+    pub has_video: bool,
+    pub codec_video: String,
+    pub codec_audio: String,
+    pub container: String,
+}
+
+// ---------- Commands ----------
+
+/// Convert a single video file. Stubbed — returns an error until
+/// the codec pipeline is implemented.
+#[tauri::command]
+pub fn convert_video(
+    input_path: String,
+    output_path: String,
+    options: ConvertOptions,
+) -> Result<ConvertResult, String> {
+    let start = Instant::now();
+    let input_size = std::fs::metadata(&input_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // TODO: Implement codec pipeline per PLAN.md
+    let _ = (&output_path, &options);
+
+    Ok(ConvertResult {
+        success: false,
+        output_path,
+        output_size: 0,
+        input_size,
+        duration_ms: start.elapsed().as_millis() as u64,
+        error: Some("Codec pipeline not yet implemented. See PLAN.md.".into()),
+    })
+}
+
+/// Convert a batch of video files. Stubbed.
+#[tauri::command]
+pub fn convert_batch(
+    items: Vec<BatchItem>,
+) -> Result<Vec<ConvertResult>, String> {
+    let results: Vec<ConvertResult> = items
+        .into_iter()
+        .map(|item| convert_video(item.input_path, item.output_path, item.options))
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(results)
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchItem {
+    pub input_path: String,
+    pub output_path: String,
+    pub options: ConvertOptions,
+}
+
+/// Probe a video file for metadata. Stubbed — returns zeros.
+#[tauri::command]
+pub fn probe_video(path: String) -> Result<ProbeResult, String> {
+    // TODO: Implement using mp4parse / matroska-demux + platform APIs
+    let _ = path;
+    Ok(ProbeResult {
+        duration_sec: 0.0,
+        width: 0,
+        height: 0,
+        fps: 0.0,
+        has_audio: false,
+        has_video: false,
+        codec_video: "unknown".into(),
+        codec_audio: "unknown".into(),
+        container: "unknown".into(),
+    })
+}
+
+/// Report which output formats are currently available (implemented).
+/// All false until the codec pipeline is built.
+#[tauri::command]
+pub fn codecs_available() -> Result<HashMap<String, bool>, String> {
+    let mut map = HashMap::new();
+    map.insert("mp4_h264".into(), false);
+    map.insert("mp4_h265".into(), false);
+    map.insert("webm_vp9".into(), false);
+    map.insert("webm_vp8".into(), false);
+    map.insert("mkv_av1".into(), false);
+    map.insert("mkv_vp9".into(), false);
+    map.insert("gif".into(), false);
+    map.insert("webp_anim".into(), false);
+    Ok(map)
+}

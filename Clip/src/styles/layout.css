@@ -1,0 +1,345 @@
+/* ============================================================
+   Clip — layout.css
+   App-specific styles for the clipboard popup: header, search,
+   history list, entry rows, footer, settings, and empty state.
+   ============================================================ */
+
+/* ---------- App shell ---------- */
+
+.clip {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* ---------- Header (custom, slimmer than the shared titlebar) ---------- */
+
+.clip__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 10px 0 12px;
+  background: var(--bg);
+  border-bottom: var(--border-w) solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.clip__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  user-select: none;
+}
+
+.clip__brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--accent-ink);
+}
+
+.clip__header-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.clip__icon-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 140ms var(--ease-out-expo), color 140ms var(--ease-out-expo);
+}
+.clip__icon-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+.clip__icon-btn--active { background: var(--bg-hover); color: var(--text-1); }
+
+/* ---------- Search bar ---------- */
+
+.clip__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: var(--border-w) solid var(--border);
+  flex-shrink: 0;
+}
+
+.clip__search-icon {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.clip__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-1);
+  padding: 2px 0;
+}
+.clip__search-input::placeholder { color: var(--text-3); }
+
+.clip__search-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+/* ---------- List ---------- */
+
+.clip__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  min-height: 0;
+}
+
+.clip__section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 10px 8px 6px;
+}
+.clip__section-label svg { width: 11px; height: 11px; }
+
+/* ---------- Entry row ---------- */
+
+.clip__entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: var(--border-w) solid transparent;
+  transition: background-color 120ms var(--ease-out-expo), border-color 120ms var(--ease-out-expo);
+}
+.clip__entry:hover { background: var(--bg-subtle); }
+.clip__entry--active {
+  background: var(--bg-hover);
+  border-color: var(--border-mid);
+}
+.clip__entry--pinned .clip__entry-preview { font-weight: 600; }
+
+.clip__entry-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.clip__entry-preview {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.clip__entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.clip__entry-dot { color: var(--text-4); }
+.clip__entry-pin { color: var(--text-2); font-weight: 600; }
+
+.clip__entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms var(--ease-out-expo);
+}
+.clip__entry:hover .clip__entry-actions,
+.clip__entry--active .clip__entry-actions { opacity: 1; }
+
+.clip__entry-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.clip__entry-btn:hover { background: var(--bg); color: var(--text-1); }
+.clip__entry-btn--danger:hover { color: var(--danger); }
+
+/* ---------- Empty state ---------- */
+
+.clip__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--text-3);
+}
+.clip__empty svg { color: var(--text-4); }
+.clip__empty-title { font-size: 14px; font-weight: 600; color: var(--text-2); }
+.clip__empty-sub { font-size: 12px; color: var(--text-3); max-width: 32ch; }
+
+/* ---------- Footer ---------- */
+
+.clip__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: var(--border-w) solid var(--border);
+  flex-shrink: 0;
+}
+
+.clip__stats {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip__footer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: transparent;
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms var(--ease-out-expo), color 140ms var(--ease-out-expo), border-color 140ms var(--ease-out-expo);
+}
+.clip__footer-btn:hover:not(:disabled) { color: var(--text-1); background: var(--bg-hover); border-color: var(--border-mid); }
+.clip__footer-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- Settings view ---------- */
+
+.clip__settings {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.clip__settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clip__settings-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.clip__settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.clip__settings-hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.clip__settings-number {
+  width: 100px;
+}
+
+.clip__settings-hotkey {
+  flex: 1;
+  min-width: 120px;
+  font-family: var(--mono);
+}
+
+.clip__settings-note {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+.clip__settings-note code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.clip__toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.clip__toggle input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--ink); }
+
+.clip__theme-group { max-width: 100%; }
+.clip__theme-group .preset { flex: 1; }
+
+.clip__settings-clear { align-self: flex-start; }
+
+/* ---------- Home logo (browser-default <pre>, matching the suite) ---------- */

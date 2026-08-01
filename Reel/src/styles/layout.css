@@ -1,0 +1,612 @@
+/* ============================================================
+   Reel — layout.css
+   App-specific styles: working view split, file list, settings
+   panel, format picker, resolution/quality controls.
+   Matches Veil/Forge/Echo's structure: .app > TitleBar + .stage
+   ============================================================ */
+
+/* ---------- App shell ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- Stage ---------- */
+
+.stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-stage);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Drop overlay (home) ---------- */
+
+.drop-overlay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px dashed var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 48px 40px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  text-align: center;
+  width: 100%;
+  max-width: 420px;
+}
+
+.drop-zone--active {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+}
+
+.drop-zone__icon {
+  width: 28px;
+  height: 28px;
+  color: var(--text-3);
+}
+
+.drop-zone__heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.drop-zone__subtext {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.drop-overlay__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  max-width: 420px;
+  text-align: center;
+}
+
+.drop-overlay__recent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.drop-overlay__recent-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  align-self: stretch;
+  padding-left: 10px;
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- Working view (placeholder — built per PLAN.md) ---------- */
+
+.reel-work {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.reel-work__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: var(--border-w) solid var(--border);
+  flex-shrink: 0;
+}
+
+.reel-work__split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---------- File list (left) ---------- */
+
+.reel-files {
+  width: 240px;
+  min-width: 240px;
+  border-right: var(--border-w) solid var(--border);
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reel-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.reel-file:hover {
+  background: var(--bg-hover);
+}
+
+.reel-file--active {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+}
+
+.reel-file__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--bg-stage);
+  border: var(--border-w) solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.reel-file__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.reel-file__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reel-file__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reel-file__meta {
+  font-size: 10.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Settings panel (right) ---------- */
+
+.reel-settings {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+.reel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reel-section__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Format picker (card grid) */
+.reel-formats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.reel-format {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms var(--ease), background-color 140ms var(--ease);
+}
+
+.reel-format:hover {
+  border-color: var(--border-mid);
+}
+
+.reel-format--selected {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+}
+
+.reel-format__name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.reel-format__sub {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.reel-format--unavailable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.reel-format--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.reel-format__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.reel-format__desc {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* File list extras */
+
+.reel-file__thumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--bg-stage);
+  border: var(--border-w) solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.reel-file--done {
+  border-color: var(--ink);
+}
+
+.reel-file__error {
+  font-size: 10px;
+  color: var(--red, #c0392b);
+  font-weight: 600;
+}
+
+.reel-file__check {
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.reel-file__remove {
+  flex-shrink: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+}
+
+.reel-file__remove:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+}
+
+/* Topbar */
+
+.reel-work__count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.reel-work__topbar-right {
+  display: flex;
+  gap: 6px;
+}
+
+/* Settings preview */
+
+.reel-settings__preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.reel-settings__preview-icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.reel-settings__preview-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reel-settings__preview-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reel-settings__preview-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Section hint */
+
+.reel-section__hint {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-4);
+}
+
+/* Dual input (width/height, trim start/end) */
+
+.reel-dual-input {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.reel-dual-input label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reel-dual-input span {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.reel-dual-input input {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-1);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 140ms var(--ease);
+}
+
+.reel-dual-input input:focus {
+  border-color: var(--ink);
+}
+
+/* FPS buttons */
+
+.reel-fps-row {
+  display: flex;
+  gap: 6px;
+}
+
+.reel-fps-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 140ms var(--ease), background-color 140ms var(--ease);
+}
+
+.reel-fps-btn:hover {
+  border-color: var(--border-mid);
+}
+
+.reel-fps-btn--selected {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+/* Slider */
+
+.reel-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reel-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.reel-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: pointer;
+}
+
+.reel-slider__value {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-2);
+  min-width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Checkbox */
+
+.reel-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.reel-checkbox input {
+  accent-color: var(--ink);
+}
+
+/* Convert bar */
+
+.reel-convertbar {
+  flex-shrink: 0;
+  border-top: var(--border-w) solid var(--border);
+  background: var(--bg);
+}
+
+.reel-progress {
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.reel-progress__bar {
+  height: 100%;
+  background: var(--ink);
+  transition: width 200ms var(--ease);
+}
+
+.reel-convertbar__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.reel-convertbar__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reel-convertbar__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.reel-convertbar__output {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reel-convertbar__output-path {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-2);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reel-convertbar__spacer {
+  flex: 1;
+}
+
+.reel-convertbar__done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reel-convertbar__done .success {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--text-4);
+}

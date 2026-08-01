@@ -1,0 +1,803 @@
+/* ============================================================
+   Shred — layout.css
+   App-specific styles: file list, algorithm picker, confirmation
+   dialog, progress, result box, shred log, free-space wipe.
+   Matches the suite structure: .app > TitleBar + .stage
+   ============================================================ */
+
+/* ---------- App shell ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- Stage ---------- */
+
+.stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-stage);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Drop overlay (home) ---------- */
+
+.drop-overlay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px;
+}
+
+.drop-overlay__recent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.drop-overlay__recent-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  align-self: flex-start;
+  padding-left: 10px;
+}
+
+/* ---------- Working view ---------- */
+
+.shred-work {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.shred-work__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: var(--border-w) solid var(--border);
+  flex-shrink: 0;
+}
+
+.shred-work__topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shred-work__topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shred-work__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.shred-work__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---------- File list (left) ---------- */
+
+.shred-files {
+  width: 240px;
+  min-width: 240px;
+  border-right: var(--border-w) solid var(--border);
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shred-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  width: 100%;
+}
+
+.shred-file__icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shred-file__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shred-file__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shred-file__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shred-file__meta {
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.shred-file__remove {
+  background: transparent;
+  border: none;
+  color: var(--text-4);
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.shred-file__remove:hover {
+  color: var(--danger);
+}
+
+.shred-file__remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- Controls panel (right) ---------- */
+
+.shred-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  max-width: 480px;
+}
+
+.shred-panel--full {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.shred-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shred-field__hint {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.shred-field__hint--error {
+  color: var(--danger);
+}
+
+/* ---------- Algorithm picker ---------- */
+
+.shred-algo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shred-algo__option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms var(--ease), background-color 140ms var(--ease);
+}
+
+.shred-algo__option:hover {
+  border-color: var(--border-mid);
+}
+
+.shred-algo__option--selected {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+}
+
+.shred-algo__option-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shred-algo__option-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.shred-algo__option-passes {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+}
+
+.shred-algo__option--selected .shred-algo__option-passes {
+  border-color: var(--ink);
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.shred-algo__option-desc {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+
+/* ---------- Custom pass controls ---------- */
+
+.shred-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shred-number-input {
+  width: 64px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-1);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 140ms var(--ease);
+}
+
+.shred-number-input:focus {
+  border-color: var(--ink);
+}
+
+.shred-pattern-input {
+  width: 80px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--text-1);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 140ms var(--ease);
+  text-transform: uppercase;
+}
+
+.shred-pattern-input:focus {
+  border-color: var(--ink);
+}
+
+/* ---------- SSD warning ---------- */
+
+.shred-ssd-warning {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+}
+
+.shred-ssd-warning__icon {
+  flex-shrink: 0;
+  color: var(--danger);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 1px;
+}
+
+.shred-ssd-warning__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shred-ssd-warning__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shred-ssd-warning__title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.shred-ssd-warning__desc {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+/* ---------- Action buttons ---------- */
+
+.shred-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.shred-actions__main {
+  flex: 1;
+}
+
+.shred-actions__main--danger {
+  background: var(--danger);
+  color: oklch(98% 0 0);
+}
+
+.shred-actions__main--danger:hover {
+  opacity: 0.9;
+}
+
+/* ---------- Progress ---------- */
+
+.shred-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shred-progress__bar {
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.shred-progress__fill {
+  height: 100%;
+  background: var(--ink);
+  transition: width 200ms var(--ease);
+}
+
+.shred-progress__label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shred-progress__file {
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Result box variants ---------- */
+
+.result-box--success {
+  border-color: color-mix(in oklch, var(--success, var(--ink)) 30%, var(--border));
+}
+
+.result-box--error {
+  border-color: color-mix(in oklch, var(--danger) 30%, var(--border));
+  border-left: 3px solid var(--danger);
+}
+
+.result-box--warning {
+  border-color: color-mix(in oklch, var(--danger) 30%, var(--border));
+  border-left: 3px solid var(--danger);
+}
+
+.result-box__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-box__title svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.result-box__detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Confirmation dialog ---------- */
+
+.shred-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 50%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.shred-confirm {
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  max-width: 460px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+
+.shred-confirm__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shred-confirm__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--danger) 12%, var(--bg));
+  border: var(--border-w) solid color-mix(in oklch, var(--danger) 30%, var(--border));
+  border-radius: var(--radius-md);
+  color: var(--danger);
+}
+
+.shred-confirm__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.shred-confirm__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+}
+
+.shred-confirm__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.shred-confirm__summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shred-confirm__summary-label {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.shred-confirm__summary-value {
+  color: var(--text-1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.shred-confirm__warning {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+  padding: 10px 12px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  border: var(--border-w) solid var(--border);
+  border-left: 3px solid var(--danger);
+}
+
+.shred-confirm__type-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shred-confirm__type-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.shred-confirm__type-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--mono);
+  color: var(--text-1);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 140ms var(--ease);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.shred-confirm__type-input:focus {
+  border-color: var(--danger);
+}
+
+.shred-confirm__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ---------- Shred log ---------- */
+
+.shred-log {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.shred-log__empty {
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  padding: 20px;
+}
+
+.shred-log__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.shred-log__entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shred-log__entry-action {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shred-log__entry-action svg {
+  width: 13px;
+  height: 13px;
+}
+
+.shred-log__entry-time {
+  font-size: 10.5px;
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.shred-log__entry-detail {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+
+.shred-log__entry-paths {
+  font-size: 10.5px;
+  color: var(--text-4);
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ---------- Free-space wipe panel ---------- */
+
+.shred-wipe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.shred-wipe__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shred-wipe__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.shred-wipe__desc {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+
+.shred-wipe__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shred-wipe__select {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-1);
+  background: var(--bg);
+  border: var(--border-w) solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+}
+
+.shred-wipe__select:focus {
+  border-color: var(--ink);
+}
+
+.shred-wipe__info {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Tab bar (Shred / Free space / Log) ---------- */
+
+.shred-tabs {
+  display: inline-flex;
+  background: var(--bg-subtle);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.shred-tabs__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color 140ms var(--ease), color 140ms var(--ease);
+}
+
+.shred-tabs__btn:hover:not(:disabled) {
+  color: var(--text-1);
+}
+
+.shred-tabs__btn--active {
+  background: var(--ink);
+  color: var(--accent-ink);
+}
+
+.shred-tabs__btn--active:hover {
+  color: var(--accent-ink);
+}
+
+.shred-tabs__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shred-tabs__btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.shred-tabs--sm .shred-tabs__btn {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.shred-tabs--sm .shred-tabs__btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---------- Logo ---------- */
+
+/* Shred logo uses browser-default <pre> styling, matching Veil/Folio/Mark/Shift/Seal. */

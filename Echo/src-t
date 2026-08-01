@@ -1,0 +1,375 @@
+// ============================================================
+// ffmpeg.rs — FFmpeg discovery, download, and path management.
+//
+// FFmpeg is NOT bundled. Users provide their own via:
+//   1. Auto-download (app fetches a known static build)
+//   2. Browse for an existing ffmpeg.exe
+//   3. Drag-drop ffmpeg.exe into the setup screen
+//
+// The chosen path is stored in the Tauri store and persisted.
+// ============================================================
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+
+use serde::Serialize;
+use tauri::{AppHandle, Manager};
+
+/// Where we store the ffmpeg path in the Tauri store.
+const STORE_KEY: &str = "ffmpegPath";
+
+/// The recommended FFmpeg download URL (gyan.dev essentials build).
+/// This is a static Windows build — no installer needed, just extract
+/// and point the app at ffmpeg.exe.
+const FFMPEG_DOWNLOAD_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+
+/// Cached path — once resolved, we don't re-check every call.
+static CACHED_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+// ---------- Types ----------
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FfmpegStatus {
+    /// Whether FFmpeg is available and working.
+    pub available: bool,
+    /// The resolved path (if found), for display.
+    pub path: Option<String>,
+    /// Where it was found: "user", "path", or none.
+    pub source: Option<String>,
+    /// FFmpeg version string (if available).
+    pub version: Option<String>,
+}
+
+// ---------- Path resolution ----------
+
+/// Resolve the FFmpeg executable path.
+///
+/// Order:
+///   1. Cached path (in-memory)
+///   2. User-configured path (from Tauri store)
+///   3. System PATH
+pub fn resolve_ffmpeg(app: &AppHandle) -> Option<PathBuf> {
+    // 1. Check cache
+    if let Ok(cache) = CACHED_PATH.lock() {
+        if let Some(ref p) = *cache {
+            if p.exists() {
+                return Some(p.clone());
+            }
+        }
+    }
+
+    // 2. Check user-configured path in the store
+    if let Some(store) = get_store(app) {
+        if let Ok(Some(path_str)) = store.get::<String>(STORE_KEY) {
+            let p = PathBuf::from(&path_str);
+            if p.exists() && validate_ffmpeg(&p) {
+                // Cache it
+                if let Ok(mut cache) = CACHED_PATH.lock() {
+                    *cache = Some(p.clone());
+                }
+                return Some(p);
+            }
+        }
+    }
+
+    // 3. Check system PATH
+    let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    if Command::new(exe_name)
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+    {
+        let p = PathBuf::from(exe_name);
+        if let Ok(mut cache) = CACHED_PATH.lock() {
+            *cache = Some(p.clone());
+        }
+        return Some(p);
+    }
+
+    None
+}
+
+/// Validate that a path points to a working ffmpeg executable.
+fn validate_ffmpeg(path: &Path) -> bool {
+    Command::new(path)
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+}
+
+/// Get the Tauri store (best-effort — may not be available in all contexts).
+fn get_store(app: &AppHandle) -> Option<std::sync::Arc<tauri_plugin_store::Store>> {
+    app.try_state::<tauri_plugin_store::StoreCollection>()
+        .map(|sc| {
+            let path = ".settings";
+            sc.get(path).unwrap_or_else(|| {
+                // Create the store if it doesn't exist
+                let store = tauri_plugin_store::Store::new(app, path.into());
+                sc.set(path.into(), store.clone());
+                store
+            })
+        })
+        .ok()
+}
+
+// ---------- Tauri commands ----------
+
+/// Get the current FFmpeg status (available, path, source, version).
+#[tauri::command]
+pub fn get_ffmpeg_status(app: AppHandle) -> FfmpegStatus {
+    if let Some(store) = get_store(&app) {
+        if let Ok(Some(path_str)) = store.get::<String>(STORE_KEY) {
+            let p = PathBuf::from(&path_str);
+            if p.exists() && validate_ffmpeg(&p) {
+                let version = get_ffmpeg_version(&p);
+                // Cache it
+                if let Ok(mut cache) = CACHED_PATH.lock() {
+                    *cache = Some(p.clone());
+                }
+                return FfmpegStatus {
+                    available: true,
+                    path: Some(path_str),
+                    source: Some("user".into()),
+                    version,
+                };
+            }
+        }
+    }
+
+    // Check system PATH
+    let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    if Command::new(exe_name)
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+    {
+        let version = get_ffmpeg_version(Path::new(exe_name));
+        let p = PathBuf::from(exe_name);
+        if let Ok(mut cache) = CACHED_PATH.lock() {
+            *cache = Some(p.clone());
+        }
+        return FfmpegStatus {
+            available: true,
+            path: Some(exe_name.to_string()),
+            source: Some("path".into()),
+            version,
+        };
+    }
+
+    FfmpegStatus {
+        available: false,
+        path: None,
+        source: None,
+        version: None,
+    }
+}
+
+/// Set the FFmpeg path (user-chosen). Validates before storing.
+#[tauri::command]
+pub fn set_ffmpeg_path(app: AppHandle, path: String) -> Result<FfmpegStatus, String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(format!("File not found: {path}"));
+    }
+    if !validate_ffmpeg(&p) {
+        return Err("This file exists but doesn't appear to be a working FFmpeg executable.".into());
+    }
+
+    // Store it
+    if let Some(store) = get_store(&app) {
+        store.set(STORE_KEY, serde_json::Value::String(path.clone()));
+        let _ = store.save();
+    }
+
+    // Update cache
+    if let Ok(mut cache) = CACHED_PATH.lock() {
+        *cache = Some(p.clone());
+    }
+
+    let version = get_ffmpeg_version(&p);
+    Ok(FfmpegStatus {
+        available: true,
+        path: Some(path),
+        source: Some("user".into()),
+        version,
+    })
+}
+
+/// Clear the stored FFmpeg path (revert to PATH lookup).
+#[tauri::command]
+pub fn clear_ffmpeg_path(app: AppHandle) -> FfmpegStatus {
+    if let Some(store) = get_store(&app) {
+        store.delete(STORE_KEY);
+        let _ = store.save();
+    }
+    if let Ok(mut cache) = CACHED_PATH.lock() {
+        *cache = None;
+    }
+    // Re-check PATH
+    get_ffmpeg_status(app)
+}
+
+/// Download FFmpeg to a user-chosen directory.
+/// Returns the path to the extracted ffmpeg.exe.
+#[tauri::command]
+pub async fn download_ffmpeg(app: AppHandle, target_dir: String) -> Result<FfmpegStatus, String> {
+    let target = PathBuf::from(&target_dir);
+    std::fs::create_dir_all(&target)
+        .map_err(|e| format!("Failed to create directory: {e}"))?;
+
+    let zip_path = target.join("ffmpeg-download.zip");
+    let extract_dir = target.join("ffmpeg");
+
+    // Download the zip
+    let response = reqwest::get(FFMPEG_DOWNLOAD_URL)
+        .await
+        .map_err(|e| format!("Download failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", response.status()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read download: {e}"))?;
+
+    std::fs::write(&zip_path, &bytes)
+        .map_err(|e| format!("Failed to write zip: {e}"))?;
+
+    // Extract the zip
+    extract_zip(&zip_path, &extract_dir)
+        .map_err(|e| format!("Failed to extract zip: {e}"))?;
+
+    // Clean up the zip
+    let _ = std::fs::remove_file(&zip_path);
+
+    // Find ffmpeg.exe in the extracted directory
+    let ffmpeg_path = find_ffmpeg_in_dir(&extract_dir)
+        .ok_or_else(|| "FFmpeg executable not found in the downloaded archive".to_string())?;
+
+    // Store the path
+    let ffmpeg_str = ffmpeg_path.to_string_lossy().to_string();
+    if let Some(store) = get_store(&app) {
+        store.set(STORE_KEY, serde_json::Value::String(ffmpeg_str.clone()));
+        let _ = store.save();
+    }
+
+    // Validate
+    if !validate_ffmpeg(&ffmpeg_path) {
+        return Err("Downloaded FFmpeg doesn't appear to be working".into());
+    }
+
+    // Update cache
+    if let Ok(mut cache) = CACHED_PATH.lock() {
+        *cache = Some(ffmpeg_path.clone());
+    }
+
+    let version = get_ffmpeg_version(&ffmpeg_path);
+    Ok(FfmpegStatus {
+        available: true,
+        path: Some(ffmpeg_str),
+        source: Some("download".into()),
+        version,
+    })
+}
+
+// ---------- Helpers ----------
+
+fn get_ffmpeg_version(path: &Path) -> Option<String> {
+    let output = Command::new(path)
+        .arg("-version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // First line is like "ffmpeg version 7.0-essentials ..."
+    stdout.lines().next().map(|s| s.to_string())
+}
+
+/// Recursively search for ffmpeg.exe in a directory.
+fn find_ffmpeg_in_dir(dir: &Path) -> Option<PathBuf> {
+    let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+
+    // Direct child
+    let direct = dir.join(exe_name);
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    // bin/ subdirectory
+    let bin = dir.join("bin").join(exe_name);
+    if bin.exists() {
+        return Some(bin);
+    }
+
+    // Search recursively (one level deep — the gyan.dev zip has
+    // ffmpeg-*/bin/ffmpeg.exe structure)
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let candidate = path.join("bin").join(exe_name);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+                let candidate = path.join(exe_name);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract a zip file to a directory (minimal implementation).
+fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(zip_path)
+        .map_err(|e| format!("Open zip: {e}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| format!("Read zip: {e}"))?;
+
+    std::fs::create_dir_all(dest)
+        .map_err(|e| format!("Create extract dir: {e}"))?;
+
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Read zip entry {i}: {e}"))?;
+
+        let name = entry.name().to_string();
+
+        // Skip directories (they'll be created by file paths)
+        if entry.is_dir() {
+            let p = dest.join(&name);
+            std::fs::create_dir_all(&p)
+                .map_err(|e| format!("Create dir {name}: {e}"))?;
+            continue;
+        }
+
+        // Create parent directories
+        let out_path = dest.join(&name);
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Create parent dir: {e}"))?;
+        }
+
+        // Extract the file
+        let mut out_file = std::fs::File::create(&out_path)
+            .map_err(|e| format!("Create file {name}: {e}"))?;
+        std::io::copy(&mut entry, &mut out_file)
+            .map_err(|e| format!("Extract {name}: {e}"))?;
+    }
+
+    Ok(())
+}

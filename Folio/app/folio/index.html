@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Folio</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html, body, #root { height: 100%; margin: 0; }
+      #boot-error {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        padding: 16px;
+        font-family: monospace;
+        font-size: 12px;
+        background: #1a1a1a;
+        color: #ff6666;
+        white-space: pre-wrap;
+        z-index: 99999;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-error"></div>
+    <div id="root"></div>
+    <script>
+      // Catch errors before React loads — write directly to DOM
+      window.addEventListener("error", function(e) {
+        var el = document.getElementById("boot-error");
+        if (el) {
+          el.style.display = "block";
+          el.textContent += "ERROR: " + (e.error && e.error.stack || e.message) + "\n\n";
+        }
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        var el = document.getElementById("boot-error");
+        if (el) {
+          el.style.display = "block";
+          el.textContent += "PROMISE REJECTION: " + (e.reason && e.reason.stack || e.reason) + "\n\n";
+        }
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
