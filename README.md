@@ -69,11 +69,7 @@ Local/
 ├── .gitignore            Root gitignore
 ├── Folio/                PDF toolkit
 │   ├── app/folio/        Tauri app
-│   └── landing/          Landing page
 ├── Veil/                 Metadata stripper
-│   ├── src/              Frontend
-│   ├── src-tauri/        Rust backend
-│   └── landing/          Landing page
 ├── Mark/                 QR generator
 ├── Shift/                File renamer
 ├── Vector/               Image vectorizer
