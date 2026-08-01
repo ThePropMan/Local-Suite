@@ -62,8 +62,6 @@ npm run tauri dev
 Local/
 ├── local-ui/             Shared design tokens, components, hooks (git subtree source)
 ├── space_logo.js         ASCII logo generator (ANSI Shadow figlet)
-├── AGENTS.md             Agent notes for the suite
-├── PLAN.md               Full suite plan and per-app specs
 ├── README.md             This file
 ├── .gitignore            Root gitignore
 ├── Folio/                PDF toolkit
