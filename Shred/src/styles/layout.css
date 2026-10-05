@@ -434,7 +434,7 @@
 /* ---------- Result box variants ---------- */
 
 .result-box--success {
-  border-color: color-mix(in oklch, var(--success, var(--ink)) 30%, var(--border));
+  border-color: color-mix(in oklch, var(--ink) 30%, var(--border));
 }
 
 .result-box--error {

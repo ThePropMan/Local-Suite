@@ -397,7 +397,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .file-list__meta { font-size: 11px; color: var(--text-3); }
 .file-list__meta--danger { color: var(--danger); }
-.file-list__meta--success { color: var(--success); }
+.file-list__meta--success { color: var(--ink); }
 
 .file-list__remove {
   background: transparent;
@@ -698,7 +698,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.5; }
 .text-2 { color: var(--text-2); } .text-3 { color: var(--text-3); } .text-4 { color: var(--text-4); }
 .muted { color: var(--text-3); font-size: 12px; }
 .danger { color: var(--danger); }
-.success { color: var(--success); }
+.success { color: var(--ink); }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Shared utility helpers ---------- */

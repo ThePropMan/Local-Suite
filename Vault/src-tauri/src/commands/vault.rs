@@ -97,7 +97,7 @@ impl VaultState {
 // ---------- Helpers ----------
 
 fn vault_file_path() -> PathBuf {
-    let mut path = dirs_next::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("com.local.vault");
     path.push("vault.json");
     path

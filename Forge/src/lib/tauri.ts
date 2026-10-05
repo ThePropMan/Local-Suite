@@ -92,7 +92,7 @@ export interface FormatDef {
 export const FORMATS: FormatDef[] = [
   { id: "jpeg", label: "JPEG", ext: "jpg", lossy: true,  desc: "Small, universal" },
   { id: "png",  label: "PNG",  ext: "png", lossy: false, desc: "Lossless, transparency" },
-  { id: "webp", label: "WebP", ext: "webp", lossy: false, desc: "Modern, tiny files (lossless)" },
+  { id: "webp", label: "WebP", ext: "webp", lossy: true,  desc: "Modern, tiny files" },
   { id: "tiff", label: "TIFF", ext: "tiff", lossy: false, desc: "Print, archival" },
   { id: "bmp",  label: "BMP",  ext: "bmp",  lossy: false, desc: "Uncompressed" },
   { id: "gif",  label: "GIF",  ext: "gif",  lossy: false, desc: "Animation support" },

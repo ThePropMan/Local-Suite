@@ -321,7 +321,7 @@
 
 .reel-file__error {
   font-size: 10px;
-  color: var(--red, #c0392b);
+  color: var(--danger);
   font-weight: 600;
 }
 

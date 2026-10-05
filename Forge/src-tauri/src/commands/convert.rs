@@ -3,7 +3,7 @@
 //
 // Supported input/output: JPEG, PNG, WebP, TIFF, BMP, GIF.
 // Resize: percent, exact dimensions, or preset (max dimension).
-// Quality: 1-100 for JPEG. WebP is lossless in v1.
+// Quality: 1-100 for JPEG and lossy WebP (WebP at 100 stays lossless).
 // Strip metadata: re-encode drops metadata; same-format copy
 //   preserves metadata if strip_metadata is false.
 // ============================================================
@@ -57,7 +57,7 @@ pub enum ResizePresetId {
 #[serde(rename_all = "snake_case")]
 pub struct ConvertOptions {
     pub format: OutputFormat,
-    pub quality: u8, // 1-100, used for JPEG
+    pub quality: u8, // 1-100, used for lossy formats (JPEG, WebP)
     pub resize: ResizeModeTag,
     pub resize_percent: Option<f32>,
     pub resize_width: Option<u32>,
@@ -205,7 +205,7 @@ fn convert_one(input_path: &str, output_path: &str, options: &ConvertOptions) ->
     let _ = match target_format {
         OutputFormat::Jpeg => encode_jpeg(&img, writer, options.quality),
         OutputFormat::Png => encode_with(&img, PngEncoder::new(writer)),
-        OutputFormat::Webp => encode_webp(&img, writer),
+        OutputFormat::Webp => encode_webp(&img, writer, options.quality),
         OutputFormat::Tiff => encode_with(&img, TiffEncoder::new(writer)),
         OutputFormat::Bmp => encode_bmp(&img, writer),
         OutputFormat::Gif => encode_with(&img, GifEncoder::new(writer)),
@@ -307,13 +307,21 @@ fn encode_bmp<W: Write>(img: &DynamicImage, mut writer: W) -> Result<(), String>
     encode_with(img, encoder)
 }
 
-fn encode_webp<W: Write>(img: &DynamicImage, writer: W) -> Result<(), String> {
+fn encode_webp<W: Write>(img: &DynamicImage, mut writer: W, quality: u8) -> Result<(), String> {
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
-    let encoder = WebPEncoder::new(writer);
-    encoder
-        .encode(rgba.as_raw(), w, h, image_webp::ColorType::Rgba8)
-        .map_err(|e| e.to_string())
+    // q=100 keeps the pure-Rust lossless encoder; anything below goes
+    // through libwebp's lossy path so the slider actually matters.
+    if quality >= 100 {
+        let encoder = WebPEncoder::new(writer);
+        encoder
+            .encode(rgba.as_raw(), w, h, image_webp::ColorType::Rgba8)
+            .map_err(|e| e.to_string())
+    } else {
+        let encoded = webp::Encoder::from_rgba(rgba.as_raw(), w, h)
+            .encode(quality.clamp(1, 100) as f32);
+        writer.write_all(&encoded).map_err(|e| e.to_string())
+    }
 }
 
 // ---------- Path helpers ----------

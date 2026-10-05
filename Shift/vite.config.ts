@@ -16,14 +16,14 @@ export default defineConfig(async () => ({
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   clearScreen: false,
   server: {
-    port: 1423,
+    port: 1434,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1424,
+          port: 1435,
         }
       : undefined,
     watch: {

@@ -27,4 +27,4 @@ getrandom = "0.2"
 zeroize = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
-dirs-next = "2"
+dirs = "6"

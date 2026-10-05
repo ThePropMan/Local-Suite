@@ -5,7 +5,7 @@
   "identifier": "com.local.vault",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1431",
+    "devUrl": "http://localhost:1436",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
