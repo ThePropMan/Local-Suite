@@ -43,11 +43,6 @@
         "enable": true,
         "scope": ["$HOME/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$DESKTOP/**"]
       }
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "tooltip": "Lens — Color Picker",
-      "menuOnLeftClick": false
     }
   },
   "bundle": {
