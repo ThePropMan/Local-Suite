@@ -65,6 +65,10 @@ export async function fileSize(path: string): Promise<number> {
   return await invoke<number>("file_size", { path });
 }
 
+export async function fileModified(path: string): Promise<number | null> {
+  return await invoke<number | null>("file_modified", { path });
+}
+
 export async function fileBaseName(path: string): Promise<string> {
   if (isTauri) {
     try {

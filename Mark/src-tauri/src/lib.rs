@@ -18,6 +18,7 @@ pub fn run() {
             shared::shared_commands::read_file_bytes,
             shared::shared_commands::write_file_bytes,
             shared::shared_commands::file_size,
+            shared::shared_commands::file_modified,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

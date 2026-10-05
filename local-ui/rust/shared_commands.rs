@@ -41,3 +41,18 @@ pub fn file_size(path: String) -> Result<u64, String> {
     let meta = fs::metadata(&path).map_err(|e| format!("Failed to stat {path}: {e}"))?;
     Ok(meta.len())
 }
+
+/// Return a file's modification time as Unix seconds, or None if
+/// the platform can't provide it.
+#[tauri::command]
+pub fn file_modified(path: String) -> Result<Option<i64>, String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("Failed to stat {path}: {e}"))?;
+    match meta.modified() {
+        Ok(t) => Ok(Some(
+            t.duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+        )),
+        Err(_) => Ok(None),
+    }
+}

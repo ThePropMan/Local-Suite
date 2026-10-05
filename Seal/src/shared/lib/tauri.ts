@@ -53,8 +53,8 @@ export async function savePath(
 
 // ---------- File I/O ----------
 
-export async function readFileBytes(path: string): Promise<Uint8Array> {
-  return await invoke<Uint8Array>("read_file_bytes", { path });
+export async function readFileBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
+  return await invoke<Uint8Array<ArrayBuffer>>("read_file_bytes", { path });
 }
 
 export async function writeFileBytes(path: string, bytes: Uint8Array): Promise<void> {
@@ -63,6 +63,10 @@ export async function writeFileBytes(path: string, bytes: Uint8Array): Promise<v
 
 export async function fileSize(path: string): Promise<number> {
   return await invoke<number>("file_size", { path });
+}
+
+export async function fileModified(path: string): Promise<number | null> {
+  return await invoke<number | null>("file_modified", { path });
 }
 
 export async function fileBaseName(path: string): Promise<string> {

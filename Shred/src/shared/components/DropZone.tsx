@@ -10,8 +10,8 @@ import { isTauri, onDragDropEvent, pickFiles, type FileFilter } from "../lib/tau
 import { IconUpload } from "./icons";
 
 interface DropZoneProps {
-  /** Lowercase extensions without dot, e.g. ["jpg", "png"]. null = accept all. */
-  extensions: string[] | null;
+  /** Lowercase extensions without dot, e.g. ["jpg", "png"]. null/undefined = accept all. */
+  extensions?: string[] | null;
   /** Heading copy, e.g. "Drop photos to strip metadata". */
   heading: string;
   /** Subtext, e.g. "JPEG, PNG, WebP, TIFF". */
@@ -31,7 +31,7 @@ interface DropZoneProps {
 }
 
 export function DropZone({
-  extensions,
+  extensions = null,
   heading,
   subtext,
   buttonLabel = "Browse files",

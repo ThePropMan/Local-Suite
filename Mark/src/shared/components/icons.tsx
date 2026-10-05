@@ -122,6 +122,9 @@ export const IconScan = (p: IconProps) => (
 export const IconLock = (p: IconProps) => (
   <svg {...base(p)}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
 );
+export const IconUnlock = (p: IconProps) => (
+  <svg {...base(p)}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 014-3" /></svg>
+);
 export const IconExternal = (p: IconProps) => (
   <svg {...base(p)}><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 01-1 1H6a1 1 0 01-1-1V7a1 1 0 011-1h5" /></svg>
 );
@@ -136,6 +139,12 @@ export const IconPhone = (p: IconProps) => (
 );
 export const IconWifi = (p: IconProps) => (
   <svg {...base(p)}><path d="M5 12.55a11 11 0 0114 0M8.5 16.1a6 6 0 017 0M2 8.82a15 15 0 0120 0" /><path d="M12 20h.01" /></svg>
+);
+export const IconSearch = (p: IconProps) => (
+  <svg {...base(p)}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+);
+export const IconPin = (p: IconProps) => (
+  <svg {...base(p)}><path d="M12 17v5" /><path d="M9 10.8a2 2 0 00-1.1 1.8l-1.8.9A2 2 0 005 15.2V16a1 1 0 001 1h12a1 1 0 001-1v-.8a2 2 0 00-1.1-1.8l-1.8-.9A2 2 0 0015 10.8V7a1 1 0 011-1 2 2 0 000-4H8a2 2 0 000 4 1 1 0 011 1z" /></svg>
 );
 
 // Brand mark — four vertical bars, used in titlebar/sidebar/landing.
