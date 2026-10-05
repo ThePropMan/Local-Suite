@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - Clip
+          - Echo
+          - Forge
+          - Lens
+          - Mark
+          - Reel
+          - Seal
+          - Shift
+          - Shred
+          - Vault
+          - Vector
+          - Veil
+        include:
+          - app: Folio
+            dir: Folio/app/folio
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir || matrix.app }}/package-lock.json
+
+      - name: Install and build ${{ matrix.app }}
+        working-directory: ${{ matrix.dir || matrix.app }}
+        run: |
+          npm ci
+          npm run build
+
+  rust:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - Clip
+          - Echo
+          - Forge
+          - Lens
+          - Mark
+          - Reel
+          - Seal
+          - Shift
+          - Shred
+          - Vault
+          - Vector
+          - Veil
+        include:
+          - app: Folio
+            dir: Folio/app/folio
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.dir || matrix.app }}/src-tauri
+          cache-all-crates: true
+
+      - name: cargo check ${{ matrix.app }}
+        working-directory: ${{ matrix.dir || matrix.app }}/src-tauri
+        run: cargo check --locked
