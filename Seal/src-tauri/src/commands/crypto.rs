@@ -32,6 +32,7 @@ use blake3::Hasher as Blake3Hasher;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tar::{Builder, Archive};
+use zeroize::{Zeroize, Zeroizing};
 
 // ---------- Constants ----------
 
@@ -102,7 +103,7 @@ fn emit_progress(app: &AppHandle, progress: u32) {
 
 // ---------- Cipher dispatch ----------
 
-fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
     let params = Params::new(ARGON2_M_COST, ARGON2_T_COST, ARGON2_P_COST, Some(32))
         .map_err(|e| format!("Argon2 params error: {e}"))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -110,7 +111,7 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| format!("Key derivation failed: {e}"))?;
-    Ok(key)
+    Ok(Zeroizing::new(key))
 }
 
 fn encrypt_chunk(cipher_id: u8, key: &[u8; 32], nonce: &[u8; 12], plaintext: &[u8]) -> Result<Vec<u8>, String> {
@@ -171,6 +172,44 @@ fn cipher_id_from_str(name: &str) -> Result<u8, String> {
 
 // ---------- Tar helpers ----------
 
+/// A plaintext temp tar in %TEMP% that is securely removed on drop:
+/// overwritten with zeros (best effort) before deletion so the file
+/// doesn't linger in recoverable form when an operation fails partway.
+struct TempTar(PathBuf);
+
+impl TempTar {
+    fn new(tag: &str) -> Result<Self, String> {
+        let path = std::env::temp_dir()
+            .join(format!("seal-{tag}-{}.tar", std::process::id()));
+        Ok(TempTar(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempTar {
+    fn drop(&mut self) {
+        if let Ok(meta) = fs::metadata(&self.0) {
+            let mut remaining = meta.len();
+            if let Ok(file) = fs::OpenOptions::new().write(true).open(&self.0) {
+                let mut writer = BufWriter::new(file);
+                let zeros = [0u8; 64 * 1024];
+                while remaining > 0 {
+                    let n = remaining.min(zeros.len() as u64) as usize;
+                    if writer.write_all(&zeros[..n]).is_err() {
+                        break;
+                    }
+                    remaining -= n as u64;
+                }
+                let _ = writer.flush();
+            }
+        }
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
 /// Recursively add a path to a tar builder. `entry_name` is the name
 /// the path should have inside the archive (basename of the input).
 fn add_to_tar(builder: &mut Builder<BufWriter<fs::File>>, path: &Path, entry_name: &str) -> Result<u64, String> {
@@ -213,10 +252,11 @@ fn add_to_tar(builder: &mut Builder<BufWriter<fs::File>>, path: &Path, entry_nam
 }
 
 /// Build a tar archive of all input paths into a temp file.
-/// Returns (temp_file_path, total_plaintext_size, file_count).
-fn build_tar(input_paths: &[String]) -> Result<(PathBuf, u64, u64), String> {
-    let tmp_dir = std::env::temp_dir();
-    let tmp_path = tmp_dir.join(format!("seal-{}.tar", std::process::id()));
+/// Returns (temp_tar_guard, total_plaintext_size, file_count). The
+/// guard wipes and deletes the plaintext tar on drop.
+fn build_tar(input_paths: &[String]) -> Result<(TempTar, u64, u64), String> {
+    let tmp = TempTar::new("enc")?;
+    let tmp_path = tmp.path().to_path_buf();
     let file = fs::File::create(&tmp_path).map_err(|e| format!("Cannot create temp tar: {e}"))?;
     let writer = BufWriter::new(file);
     let mut builder = Builder::new(writer);
@@ -227,7 +267,6 @@ fn build_tar(input_paths: &[String]) -> Result<(PathBuf, u64, u64), String> {
     for path_str in input_paths {
         let path = Path::new(path_str);
         if !path.exists() {
-            let _ = fs::remove_file(&tmp_path);
             return Err(format!("Path does not exist: {}", path.display()));
         }
         let basename = path
@@ -247,7 +286,7 @@ fn build_tar(input_paths: &[String]) -> Result<(PathBuf, u64, u64), String> {
     builder.finish().map_err(|e| format!("tar finish error: {e}"))?;
     // Flush the BufWriter by dropping the builder.
     drop(builder);
-    Ok((tmp_path, total_size, file_count))
+    Ok((tmp, total_size, file_count))
 }
 
 fn dir_size(path: &Path) -> u64 {
@@ -286,6 +325,7 @@ pub fn encrypt_file(
     password: String,
     cipher: String,
 ) -> Result<EncryptResult, String> {
+    let password = Zeroizing::new(password);
     if input_paths.is_empty() {
         return Err("No input paths provided.".to_string());
     }
@@ -295,8 +335,10 @@ pub fn encrypt_file(
     let cipher_id = cipher_id_from_str(&cipher)?;
     let start = Instant::now();
 
-    // 1. Build the tar archive (plaintext) into a temp file.
-    let (tar_path, input_size, file_count) = build_tar(&input_paths)?;
+    // 1. Build the tar archive (plaintext) into a temp file. The TempTar
+    //    guard wipes and removes it on every exit path, including errors.
+    let (tar, input_size, file_count) = build_tar(&input_paths)?;
+    let tar_path = tar.path();
 
     // 2. Generate salt and derive key.
     let mut salt = [0u8; SALT_LEN];
@@ -361,9 +403,6 @@ pub fn encrypt_file(
     out.flush().map_err(|e| write_err(e))?;
     drop(out);
 
-    // 7. Clean up the temp tar.
-    let _ = fs::remove_file(&tar_path);
-
     let output_size = fs::metadata(&output_path)
         .map(|m| m.len())
         .unwrap_or(0);
@@ -387,6 +426,7 @@ pub fn decrypt_file(
     output_dir: String,
     password: String,
 ) -> Result<DecryptResult, String> {
+    let password = Zeroizing::new(password);
     let (file_count, output_size, verified, cipher_id, duration_ms) =
         decrypt_stream(&app, &input_path, &password, Some(&output_dir))?;
     Ok(DecryptResult {
@@ -406,6 +446,7 @@ pub fn verify_file(
     input_path: String,
     password: String,
 ) -> Result<VerifyResult, String> {
+    let password = Zeroizing::new(password);
     let (file_count, _output_size, verified, cipher_id, _duration_ms) =
         decrypt_stream(&app, &input_path, &password, None)?;
     let message = if verified {
@@ -467,9 +508,8 @@ fn decrypt_stream(
     let mut blake = Blake3Hasher::new();
     let mut plaintext_size = 0u64;
 
-    let tmp_dir = std::env::temp_dir();
-    let tmp_tar = tmp_dir.join(format!("seal-decrypt-{}.tar", std::process::id()));
-    let tmp_file = fs::File::create(&tmp_tar).map_err(|e| format!("Create temp tar: {e}"))?;
+    let tmp_tar = TempTar::new("dec")?;
+    let tmp_file = fs::File::create(tmp_tar.path()).map_err(|e| format!("Create temp tar: {e}"))?;
     let mut tmp_writer = BufWriter::new(tmp_file);
 
     let mut chunk_index = 0u32;
@@ -494,12 +534,13 @@ fn decrypt_stream(
         consumed += ct_len;
 
         // Decrypt.
-        let plaintext = decrypt_chunk(cipher_id, &key, &nonce, &ciphertext)?;
+        let mut plaintext = decrypt_chunk(cipher_id, &key, &nonce, &ciphertext)?;
         blake.update(&plaintext);
         plaintext_size += plaintext.len() as u64;
         tmp_writer
             .write_all(&plaintext)
             .map_err(|e| format!("Write temp tar: {e}"))?;
+        plaintext.zeroize();
         chunk_index = chunk_index.wrapping_add(1);
         let pct = ((consumed as u64 * 100) / total).min(99) as u32;
         emit_progress(app, pct);
@@ -514,28 +555,42 @@ fn decrypt_stream(
     tmp_writer.flush().map_err(|e| format!("Flush temp tar: {e}"))?;
     drop(tmp_writer);
 
-    // 5. Optionally extract the tar.
+    // 5. Optionally extract the tar. Extraction only runs when the
+    //    BLAKE3 root hash verified — a corrupt or truncated archive
+    //    writes nothing to disk.
     let mut file_count = 0u64;
     if let Some(dir) = extract_dir {
+        if !verified {
+            return Err(
+                "BLAKE3 root hash mismatch — the archive is corrupt or truncated. No files were extracted."
+                    .to_string(),
+            );
+        }
         let out_dir = Path::new(dir);
         fs::create_dir_all(out_dir).map_err(|e| format!("Cannot create output dir: {e}"))?;
-        let tar_file = fs::File::open(&tmp_tar).map_err(|e| format!("Open temp tar: {e}"))?;
+        let tar_file = fs::File::open(tmp_tar.path()).map_err(|e| format!("Open temp tar: {e}"))?;
         let mut archive = Archive::new(tar_file);
         archive.set_overwrite(true);
-        archive.unpack(out_dir).map_err(|e| format!("Extract tar: {e}"))?;
-        // Count extracted files.
-        let tar_file2 = fs::File::open(&tmp_tar).map_err(|e| format!("Open temp tar: {e}"))?;
-        let mut archive2 = Archive::new(tar_file2);
-        for entry in archive2.entries().map_err(|e| format!("Read tar entries: {e}"))? {
-            if let Ok(entry) = entry {
-                if entry.header().entry_type() == tar::EntryType::Regular {
-                    file_count += 1;
-                }
+        for entry in archive.entries().map_err(|e| format!("Read tar entries: {e}"))? {
+            let mut entry = entry.map_err(|e| format!("Read tar entry: {e}"))?;
+            let is_file = entry.header().entry_type() == tar::EntryType::Regular;
+            // unpack_in refuses entries whose path would escape out_dir.
+            if !entry
+                .unpack_in(out_dir)
+                .map_err(|e| format!("Extract tar: {e}"))?
+            {
+                return Err(
+                    "Archive contains a path that escapes the output directory. Extraction aborted."
+                        .to_string(),
+                );
+            }
+            if is_file {
+                file_count += 1;
             }
         }
     } else {
         // Verify-only: count files from tar headers without extracting.
-        let tar_file2 = fs::File::open(&tmp_tar).map_err(|e| format!("Open temp tar: {e}"))?;
+        let tar_file2 = fs::File::open(tmp_tar.path()).map_err(|e| format!("Open temp tar: {e}"))?;
         let mut archive2 = Archive::new(tar_file2);
         for entry in archive2.entries().map_err(|e| format!("Read tar entries: {e}"))? {
             if let Ok(entry) = entry {
@@ -546,7 +601,6 @@ fn decrypt_stream(
         }
     }
 
-    let _ = fs::remove_file(&tmp_tar);
     let duration_ms = start.elapsed().as_millis() as u64;
 
     Ok((file_count, plaintext_size, verified, cipher_id, duration_ms))

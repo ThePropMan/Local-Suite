@@ -53,6 +53,13 @@ export async function lockVault(): Promise<void> {
   return invoke<void>("lock_vault");
 }
 
+/** Push the auto-lock timeout (minutes) to the backend so it enforces
+ *  the same limit even if the webview stalls. */
+export async function setAutoLockMinutes(minutes: number): Promise<void> {
+  if (!isTauri) return;
+  return invoke<void>("set_auto_lock_minutes", { minutes });
+}
+
 /** Check if the vault is currently unlocked. */
 export async function isUnlocked(): Promise<boolean> {
   if (!isTauri) return false;

@@ -16,6 +16,7 @@ pub fn run() {
             commands::vault::unlock_vault,
             commands::vault::lock_vault,
             commands::vault::is_unlocked,
+            commands::vault::set_auto_lock_minutes,
             commands::vault::get_entries,
             commands::vault::save_entry,
             commands::vault::delete_entry,

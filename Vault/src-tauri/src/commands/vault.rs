@@ -8,13 +8,14 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 // ---------- Types ----------
 
@@ -41,11 +42,15 @@ pub struct VaultFile {
 }
 
 pub struct VaultState {
-    key: Option<[u8; 32]>,
+    key: Option<Zeroizing<[u8; 32]>>,
     salt: Option<[u8; 16]>,
     entries: Vec<VaultEntry>,
     vault_path: PathBuf,
+    last_active: Instant,
+    auto_lock: Duration,
 }
+
+const DEFAULT_AUTO_LOCK: Duration = Duration::from_secs(5 * 60);
 
 impl VaultState {
     fn new() -> Self {
@@ -55,7 +60,37 @@ impl VaultState {
             salt: None,
             entries: Vec::new(),
             vault_path,
+            last_active: Instant::now(),
+            auto_lock: DEFAULT_AUTO_LOCK,
         }
+    }
+
+    /// Backend auto-lock backstop: if the vault has been idle past the
+    /// configured limit, wipe it even if the frontend timer never fired.
+    /// Otherwise refresh the activity timestamp.
+    fn check_auto_lock(&mut self) {
+        if self.key.is_none() {
+            return;
+        }
+        if self.last_active.elapsed() > self.auto_lock {
+            self.wipe();
+        } else {
+            self.last_active = Instant::now();
+        }
+    }
+
+    /// Zeroize the key and all decrypted entries, returning the vault
+    /// to a locked state.
+    fn wipe(&mut self) {
+        self.key = None; // Zeroizing<[u8; 32]> scrubs on drop
+        if let Some(ref mut salt) = self.salt {
+            salt.zeroize();
+        }
+        self.salt = None;
+        for entry in &mut self.entries {
+            entry.zeroize();
+        }
+        self.entries.clear();
     }
 }
 
@@ -68,7 +103,7 @@ fn vault_file_path() -> PathBuf {
     path
 }
 
-fn derive_key(master_password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+fn derive_key(master_password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
     let argon2 = Argon2::new(
         argon2::Algorithm::Argon2id,
         argon2::Version::V0x13,
@@ -79,7 +114,7 @@ fn derive_key(master_password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     argon2
         .hash_password_into(master_password.as_bytes(), salt, &mut key)
         .map_err(|e| format!("Key derivation failed: {e}"))?;
-    Ok(key)
+    Ok(Zeroizing::new(key))
 }
 
 fn encrypt_entries(key: &[u8; 32], salt: &[u8; 16], entries: &[VaultEntry]) -> Result<VaultFile, String> {
@@ -89,7 +124,8 @@ fn encrypt_entries(key: &[u8; 32], salt: &[u8; 16], entries: &[VaultEntry]) -> R
         n
     };
 
-    let plaintext = serde_json::to_vec(entries).map_err(|e| format!("Serialize error: {e}"))?;
+    let plaintext =
+        Zeroizing::new(serde_json::to_vec(entries).map_err(|e| format!("Serialize error: {e}"))?);
 
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -115,26 +151,33 @@ fn decrypt_vault_file(key: &[u8; 32], file: &VaultFile) -> Result<Vec<VaultEntry
 
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_ref())
-        .map_err(|_| "Invalid master password or corrupted vault".to_string())?;
+    let plaintext = Zeroizing::new(
+        cipher
+            .decrypt(nonce, ciphertext.as_ref())
+            .map_err(|_| "Invalid master password or corrupted vault".to_string())?,
+    );
 
     serde_json::from_slice(&plaintext).map_err(|e| format!("Deserialize error: {e}"))
 }
 
 fn save_vault(state: &VaultState) -> Result<(), String> {
-    let key = state
-        .key
-        .ok_or("Vault is locked")?;
-    let salt = state
-        .salt
-        .ok_or("Vault is locked")?;
-    let vault_file = encrypt_entries(&key, &salt, &state.entries)?;
+    let key = state.key.as_ref().ok_or("Vault is locked")?;
+    let salt = state.salt.as_ref().ok_or("Vault is locked")?;
+    let vault_file = encrypt_entries(key, salt, &state.entries)?;
     let json = serde_json::to_vec_pretty(&vault_file).map_err(|e| format!("Serialize error: {e}"))?;
     if let Some(parent) = state.vault_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Create dir error: {e}"))?;
     }
-    fs::write(&state.vault_path, json).map_err(|e| format!("Write error: {e}"))
+    // Write to a temp file, snapshot the current vault as .bak, then
+    // rename into place — a crash mid-write can never corrupt the
+    // only copy of the vault.
+    let tmp_path = state.vault_path.with_extension("tmp");
+    let bak_path = state.vault_path.with_extension("bak");
+    fs::write(&tmp_path, &json).map_err(|e| format!("Write error: {e}"))?;
+    if state.vault_path.exists() {
+        fs::copy(&state.vault_path, &bak_path).map_err(|e| format!("Backup error: {e}"))?;
+    }
+    fs::rename(&tmp_path, &state.vault_path).map_err(|e| format!("Write error: {e}"))
 }
 
 fn read_vault_file(path: &PathBuf) -> Result<VaultFile, String> {
@@ -157,7 +200,8 @@ pub fn vault_exists() -> bool {
 /// Create a new empty vault with a master password.
 #[tauri::command]
 pub fn create_vault(state: State<'_, Mutex<VaultState>>, master_password: String) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
+    let master_password = Zeroizing::new(master_password);
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
     if state.vault_path.exists() {
         return Err("Vault already exists".to_string());
     }
@@ -170,13 +214,15 @@ pub fn create_vault(state: State<'_, Mutex<VaultState>>, master_password: String
     state.key = Some(key);
     state.salt = Some(salt);
     state.entries = Vec::new();
+    state.last_active = Instant::now();
     save_vault(&state)
 }
 
 /// Unlock the vault with a master password. Loads entries into memory.
 #[tauri::command]
 pub fn unlock_vault(state: State<'_, Mutex<VaultState>>, master_password: String) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
+    let master_password = Zeroizing::new(master_password);
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
     if !state.vault_path.exists() {
         return Err("No vault found. Create one first.".to_string());
     }
@@ -194,38 +240,50 @@ pub fn unlock_vault(state: State<'_, Mutex<VaultState>>, master_password: String
     state.key = Some(key);
     state.salt = Some(salt_arr);
     state.entries = entries;
+    state.last_active = Instant::now();
     Ok(())
 }
 
 /// Lock the vault: zeroize the key and clear entries from memory.
 #[tauri::command]
 pub fn lock_vault(state: State<'_, Mutex<VaultState>>) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
-    if let Some(ref mut key) = state.key {
-        key.zeroize();
-    }
-    state.key = None;
-    if let Some(ref mut salt) = state.salt {
-        salt.zeroize();
-    }
-    state.salt = None;
-    for entry in &mut state.entries {
-        entry.zeroize();
-    }
-    state.entries.clear();
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.wipe();
     Ok(())
 }
 
 /// Check if the vault is currently unlocked.
 #[tauri::command]
 pub fn is_unlocked(state: State<'_, Mutex<VaultState>>) -> bool {
-    state.lock().unwrap().key.is_some()
+    state
+        .inner()
+        .lock()
+        .map(|mut s| {
+            s.check_auto_lock();
+            s.key.is_some()
+        })
+        .unwrap_or(false)
+}
+
+/// Update the backend auto-lock timeout (in minutes). The frontend
+/// calls this when the user changes the auto-lock setting so the
+/// backend enforces the same limit even if the webview stalls.
+#[tauri::command]
+pub fn set_auto_lock_minutes(
+    state: State<'_, Mutex<VaultState>>,
+    minutes: u64,
+) -> Result<(), String> {
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    let minutes = minutes.clamp(1, 24 * 60);
+    state.auto_lock = Duration::from_secs(minutes * 60);
+    Ok(())
 }
 
 /// Get all entries (only while unlocked).
 #[tauri::command]
 pub fn get_entries(state: State<'_, Mutex<VaultState>>) -> Result<Vec<VaultEntry>, String> {
-    let state = state.lock().unwrap();
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -235,7 +293,8 @@ pub fn get_entries(state: State<'_, Mutex<VaultState>>) -> Result<Vec<VaultEntry
 /// Add or update an entry, then re-encrypt and save.
 #[tauri::command]
 pub fn save_entry(state: State<'_, Mutex<VaultState>>, entry: VaultEntry) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -251,7 +310,8 @@ pub fn save_entry(state: State<'_, Mutex<VaultState>>, entry: VaultEntry) -> Res
 /// Delete an entry by ID.
 #[tauri::command]
 pub fn delete_entry(state: State<'_, Mutex<VaultState>>, id: String) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -338,7 +398,10 @@ pub fn change_master_password(
     old_password: String,
     new_password: String,
 ) -> Result<(), String> {
-    let mut state = state.lock().unwrap();
+    let old_password = Zeroizing::new(old_password);
+    let new_password = Zeroizing::new(new_password);
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -367,7 +430,8 @@ pub fn change_master_password(
 /// Export all entries to a JSON string (only while unlocked).
 #[tauri::command]
 pub fn export_vault(state: State<'_, Mutex<VaultState>>, format: String) -> Result<String, String> {
-    let state = state.lock().unwrap();
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -408,7 +472,9 @@ pub fn import_vault(
     data: String,
     format: String,
 ) -> Result<usize, String> {
-    let mut state = state.lock().unwrap();
+    let data = Zeroizing::new(data);
+    let mut state = state.lock().map_err(|_| "Vault state lock poisoned".to_string())?;
+    state.check_auto_lock();
     if state.key.is_none() {
         return Err("Vault is locked".to_string());
     }
@@ -455,7 +521,7 @@ pub fn import_vault(
         _ => return Err("Unknown import format".to_string()),
     };
 
-    let count = imported.len();
+    let mut count = 0usize;
     // Merge: skip entries with duplicate titles+usernames
     for entry in imported {
         let dupe = state.entries.iter().any(|e| {
@@ -463,6 +529,7 @@ pub fn import_vault(
         });
         if !dupe {
             state.entries.push(entry);
+            count += 1;
         }
     }
     save_vault(&state)?;

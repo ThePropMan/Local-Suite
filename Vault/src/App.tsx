@@ -29,6 +29,7 @@ import {
   createVault,
   unlockVault,
   lockVault,
+  setAutoLockMinutes,
   isUnlocked,
   getEntries,
   saveEntry,
@@ -112,7 +113,11 @@ export default function App() {
     getStoreValue<Theme>("theme").then((t) => {
       if (t) { setTheme(t); applyTheme(t); }
     });
-    getStoreValue<number>("autoLockMin").then((v) => v && setAutoLockMin(v));
+    getStoreValue<number>("autoLockMin").then((v) => {
+      const m = v ?? 5;
+      setAutoLockMin(m);
+      setAutoLockMinutes(m);
+    });
     getStoreValue<number>("clipClearSec").then((v) => v && setClipClearSec(v));
     getStoreValue<GenOptions>("genOpts").then((v) => v && setGenOpts(v));
 
@@ -278,6 +283,7 @@ export default function App() {
   const handleAutoLockChange = useCallback(async (m: number) => {
     setAutoLockMin(m);
     await setStoreValue("autoLockMin", m);
+    await setAutoLockMinutes(m);
   }, []);
 
   const handleClipClearChange = useCallback(async (s: number) => {
