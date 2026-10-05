@@ -19,12 +19,15 @@ use windows::Win32::Media::MediaFoundation::{
     MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
     MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE,
     MF_MT_MPEG2_PROFILE, MF_MT_SUBTYPE, MFAudioFormat_AAC, MFAudioFormat_PCM, MFMediaType_Audio,
-    MFMediaType_Video, MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_AUDIO_STREAM,
-    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
+    MFMediaType_Video, MF_PD_DURATION, MF_SOURCE_READER_ALL_STREAMS,
+    MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READER_MEDIASOURCE, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
     MF_SOURCE_READERF_ENDOFSTREAM, MFSTARTUP_FULL, MF_VERSION, MFVideoFormat_H264,
     MFVideoFormat_H265, MFVideoFormat_NV12, MFVideoInterlace_Progressive,
 };
+use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+use windows::Win32::System::Variant::{VT_I8, VT_UI8};
 
 use crate::commands::convert::{ConvertOptions, ConvertResult, OutputFormat, ProbeResult};
 
@@ -425,8 +428,29 @@ pub fn probe_with_mf(path: &str) -> ProbeResult {
             codec_audio = get_audio_codec_name(&atype);
         }
 
+        // Duration is a PROPVARIANT presentation attribute on the media
+        // source: VT_I8 (sometimes VT_UI8), in 100-nanosecond units.
+        let duration_sec = match reader.GetPresentationAttribute(
+            MF_SOURCE_READER_MEDIASOURCE.0 as u32,
+            &MF_PD_DURATION,
+        ) {
+            Ok(mut pv) => {
+                let inner = &pv.Anonymous.Anonymous;
+                let secs = if inner.vt == VT_I8 {
+                    inner.Anonymous.hVal as f64 / 10_000_000.0
+                } else if inner.vt == VT_UI8 {
+                    inner.Anonymous.uhVal as f64 / 10_000_000.0
+                } else {
+                    0.0
+                };
+                let _ = PropVariantClear(&mut pv);
+                secs.max(0.0)
+            }
+            Err(_) => 0.0,
+        };
+
         ProbeResult {
-            duration_sec: 0.0, // TODO: requires PROPVARIANT access
+            duration_sec,
             width,
             height,
             fps,

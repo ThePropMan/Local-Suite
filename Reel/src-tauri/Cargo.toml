@@ -30,13 +30,10 @@ serde_json = "1"
 windows = { version = "0.61", features = [
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_Variant",
     "Win32_Foundation",
 ] }
-
-# AV1 encoder (pure Rust, royalty-free)
-# asm feature disabled — requires NASM. Can be enabled later for speed.
-rav1e = { version = "0.7", default-features = false, features = ["threading"] }
 
 # GIF encoder (pure Rust)
 gif = "0.13"
