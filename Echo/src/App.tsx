@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { TitleBar } from "./shared/components/TitleBar";
 import { ToastContainer, showToast } from "./shared/components/Toast";
 import { ErrorBoundary } from "./shared/components/ErrorBoundary";
@@ -966,6 +967,7 @@ interface FfmpegSetupProps {
 function FfmpegSetup({ status, onRefresh, onDismiss }: FfmpegSetupProps) {
   const [browsePath, setBrowsePath] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [dlProgress, setDlProgress] = useState<{ received: number; total: number | null } | null>(null);
   const [downloadDir, setDownloadDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -995,9 +997,22 @@ function FfmpegSetup({ status, onRefresh, onDismiss }: FfmpegSetupProps) {
     if (dir) setDownloadDir(dir);
   }, []);
 
+  // Download progress events from the backend.
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<{ received: number; total: number | null }>(
+      "ffmpeg://download-progress",
+      (e) => setDlProgress(e.payload),
+    ).then((fn) => { if (!cancelled) unlisten = fn; }).catch(() => {});
+    return () => { cancelled = true; unlisten?.(); };
+  }, []);
+
   const handleDownload = useCallback(async () => {
     if (!downloadDir) return;
     setDownloading(true);
+    setDlProgress(null);
     setError(null);
     try {
       await downloadFfmpeg(downloadDir);
@@ -1074,9 +1089,26 @@ function FfmpegSetup({ status, onRefresh, onDismiss }: FfmpegSetupProps) {
               onClick={handleDownload}
               disabled={downloading || !downloadDir}
             >
-              {downloading ? "Downloading…" : "Download FFmpeg"}
+              {downloading
+                ? dlProgress?.total
+                  ? `Downloading… ${Math.floor((dlProgress.received / dlProgress.total) * 100)}%`
+                  : `Downloading… ${(dlProgress?.received ?? 0) / 1e6 | 0} MB`
+                : "Download FFmpeg"}
             </button>
           </div>
+          {downloading && (
+            <div className="progress" aria-hidden="true">
+              <div
+                className="progress__bar"
+                style={{
+                  width: dlProgress?.total
+                    ? `${Math.floor((dlProgress.received / dlProgress.total) * 100)}%`
+                    : "100%",
+                  opacity: dlProgress?.total ? 1 : 0.35,
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Option 2: Browse for existing */}

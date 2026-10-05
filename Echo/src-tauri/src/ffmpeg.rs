@@ -3,18 +3,32 @@
 // an existing executable, or the setup screen. The selected path is stored
 // as JSON in the app data directory.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Where we store the ffmpeg path (in the app data dir).
 const CONFIG_FILE: &str = "ffmpeg-config.json";
 
-/// Recommended static Windows build. Extract it and point the app at ffmpeg.exe.
-const FFMPEG_DOWNLOAD_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+/// Pinned static Windows build (gyan.dev, release 9.0.2 essentials).
+/// Bump both constants together when updating FFmpeg.
+const FFMPEG_DOWNLOAD_URL: &str =
+    "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip";
+/// SHA-256 of the pinned archive, verified before anything is extracted.
+const FFMPEG_SHA256: &str = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
+
+/// Progress payload for `ffmpeg://download-progress` events.
+#[derive(Debug, Serialize, Clone)]
+struct DownloadProgress {
+    received: u64,
+    total: Option<u64>,
+}
 
 /// In-memory path cache; a valid entry avoids another lookup.
 static CACHED_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -229,8 +243,16 @@ pub async fn download_ffmpeg(app: AppHandle, target_dir: String) -> Result<Ffmpe
     let zip_path = target.join("ffmpeg-download.zip");
     let extract_dir = target.join("ffmpeg");
 
-    // Download the zip
-    let response = reqwest::get(FFMPEG_DOWNLOAD_URL)
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(20 * 60)) // ~100 MB on slow links
+        .user_agent(concat!("echo/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let mut response = client
+        .get(FFMPEG_DOWNLOAD_URL)
+        .send()
         .await
         .map_err(|e| format!("Download failed: {e}"))?;
 
@@ -238,24 +260,63 @@ pub async fn download_ffmpeg(app: AppHandle, target_dir: String) -> Result<Ffmpe
         return Err(format!("Download failed: HTTP {}", response.status()));
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read download: {e}"))?;
-
-    std::fs::write(&zip_path, &bytes)
+    let total = response.content_length();
+    let mut received: u64 = 0;
+    let mut hasher = Sha256::new();
+    let mut file = std::fs::File::create(&zip_path)
         .map_err(|e| format!("Failed to write zip: {e}"))?;
 
-    // Extract the zip
-    extract_zip(&zip_path, &extract_dir)
-        .map_err(|e| format!("Failed to extract zip: {e}"))?;
+    // Stream to disk, hashing as we go so a corrupt or truncated
+    // transfer is caught before anything is extracted.
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if let Err(e) = file.write_all(&chunk) {
+                    drop(file);
+                    cleanup_artifacts(&zip_path, &extract_dir);
+                    return Err(format!("Failed to write zip: {e}"));
+                }
+                hasher.update(&chunk);
+                received += chunk.len() as u64;
+                let _ = app.emit(
+                    "ffmpeg://download-progress",
+                    DownloadProgress { received, total },
+                );
+            }
+            Ok(None) => break,
+            Err(e) => {
+                drop(file);
+                cleanup_artifacts(&zip_path, &extract_dir);
+                return Err(format!("Download failed: {e}"));
+            }
+        }
+    }
+    drop(file);
+
+    // Verify the pinned checksum before extracting anything.
+    let digest = format!("{:x}", hasher.finalize());
+    if digest != FFMPEG_SHA256 {
+        cleanup_artifacts(&zip_path, &extract_dir);
+        return Err("Downloaded archive failed checksum verification".into());
+    }
+
+    // Extract the zip (with zip-slip protection per entry).
+    if let Err(e) = extract_zip(&zip_path, &extract_dir) {
+        cleanup_artifacts(&zip_path, &extract_dir);
+        return Err(format!("Failed to extract zip: {e}"));
+    }
 
     // Clean up the zip
     let _ = std::fs::remove_file(&zip_path);
 
     // Find ffmpeg.exe in the extracted directory
-    let ffmpeg_path = find_ffmpeg_in_dir(&extract_dir)
-        .ok_or_else(|| "FFmpeg executable not found in the downloaded archive".to_string())?;
+    let ffmpeg_path = match find_ffmpeg_in_dir(&extract_dir) {
+        Some(p) => p,
+        None => {
+            cleanup_artifacts(&zip_path, &extract_dir);
+            return Err("FFmpeg executable not found in the downloaded archive".to_string());
+        }
+    };
 
     // Store the path
     let ffmpeg_str = ffmpeg_path.to_string_lossy().to_string();
@@ -263,6 +324,7 @@ pub async fn download_ffmpeg(app: AppHandle, target_dir: String) -> Result<Ffmpe
 
     // Validate
     if !validate_ffmpeg(&ffmpeg_path) {
+        cleanup_artifacts(&zip_path, &extract_dir);
         return Err("Downloaded FFmpeg doesn't appear to be working".into());
     }
 
@@ -280,6 +342,15 @@ pub async fn download_ffmpeg(app: AppHandle, target_dir: String) -> Result<Ffmpe
 }
 
 // ---------- Helpers ----------
+
+/// Delete the partial download and extraction directory after any
+/// failure so a broken attempt never leaves artifacts behind.
+fn cleanup_artifacts(zip_path: &Path, extract_dir: &Path) {
+    let _ = std::fs::remove_file(zip_path);
+    if extract_dir.exists() {
+        let _ = std::fs::remove_dir_all(extract_dir);
+    }
+}
 
 fn get_ffmpeg_version(path: &Path) -> Option<String> {
     let output = Command::new(path)
@@ -344,12 +415,16 @@ fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
             .by_index(i)
             .map_err(|e| format!("Read zip entry {i}: {e}"))?;
 
-        let name = entry.name().to_string();
+        // enclosed_name() returns None for entries whose path would
+        // escape dest (absolute paths, "..") — skip them entirely.
+        let Some(name) = entry.enclosed_name() else {
+            continue;
+        };
+        let display = name.display().to_string();
 
         if entry.is_dir() {
-            let p = dest.join(&name);
-            std::fs::create_dir_all(&p)
-                .map_err(|e| format!("Create dir {name}: {e}"))?;
+            std::fs::create_dir_all(dest.join(&name))
+                .map_err(|e| format!("Create dir {display}: {e}"))?;
             continue;
         }
 
@@ -360,9 +435,9 @@ fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
         }
 
         let mut out_file = std::fs::File::create(&out_path)
-            .map_err(|e| format!("Create file {name}: {e}"))?;
+            .map_err(|e| format!("Create file {display}: {e}"))?;
         std::io::copy(&mut entry, &mut out_file)
-            .map_err(|e| format!("Extract {name}: {e}"))?;
+            .map_err(|e| format!("Extract {display}: {e}"))?;
     }
 
     Ok(())
