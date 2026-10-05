@@ -52,6 +52,7 @@ tmp*
 
 # Landing pages (deployed separately, not part of source repo)
 landing/
+landing-root/
 
 # Playwright MCP artifacts
 .playwright-mcp/
