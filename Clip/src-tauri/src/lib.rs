@@ -98,7 +98,7 @@ pub fn run() {
             // Start the background clipboard monitor. Pass the precomputed
             // key so the monitor never needs to run Argon2.
             let db_mon = state.db.clone();
-            let key_mon = state.key;
+            let key_mon = state.key.clone();
             let app_mon = app.handle().clone();
             std::thread::spawn(move || clipboard::monitor_loop(db_mon, key_mon, app_mon));
 
@@ -125,6 +125,11 @@ pub fn run() {
             clipboard::set_settings,
             clipboard::get_stats,
             clipboard::set_hotkey,
+            clipboard::is_locked,
+            clipboard::lock,
+            clipboard::unlock,
+            clipboard::set_passphrase,
+            clipboard::clear_passphrase,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

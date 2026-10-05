@@ -7,12 +7,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface ClipboardEntry {
   id: number;
+  /** Decrypted text, or a base64 PNG thumbnail for image entries. */
   content: string;
   preview: string;
   created_at: number;
   pinned: boolean;
   source: string | null;
   char_count: number;
+  kind: "text" | "image";
 }
 
 export interface ClipSettings {
@@ -20,6 +22,7 @@ export interface ClipSettings {
   monitoring_enabled: boolean;
   hotkey: string;
   paste_as_plain_text: boolean;
+  has_passphrase: boolean;
 }
 
 export interface ClipStats {
@@ -70,4 +73,24 @@ export async function getStats(): Promise<ClipStats> {
 
 export async function setHotkey(hotkey: string): Promise<string> {
   return await invoke<string>("set_hotkey", { hotkey });
+}
+
+export async function isLocked(): Promise<boolean> {
+  return await invoke<boolean>("is_locked");
+}
+
+export async function unlock(passphrase: string): Promise<void> {
+  await invoke("unlock", { passphrase });
+}
+
+export async function lock(): Promise<void> {
+  await invoke("lock", {});
+}
+
+export async function setPassphrase(passphrase: string): Promise<void> {
+  await invoke("set_passphrase", { passphrase });
+}
+
+export async function clearPassphrase(): Promise<void> {
+  await invoke("clear_passphrase", {});
 }

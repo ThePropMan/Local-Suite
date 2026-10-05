@@ -16,6 +16,8 @@ import {
   IconMoon,
   IconMonitor,
   IconRefresh,
+  IconLock,
+  IconImage,
 } from "./shared/components/icons";
 import {
   applyTheme,
@@ -36,6 +38,11 @@ import {
   setSettings as setSettingsCmd,
   getStats,
   setHotkey,
+  isLocked,
+  unlock,
+  setPassphrase,
+  clearPassphrase,
+  lock,
   type ClipboardEntry,
   type ClipSettings,
   type ClipStats,
@@ -68,6 +75,9 @@ export default function App() {
   const [autostart, setAutostart] = useState(false);
   const [selected, setSelected] = useState(0);
   const [hotkeyDraft, setHotkeyDraft] = useState("");
+  const [locked, setLocked] = useState(false);
+  const [passDraft, setPassDraft] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +88,10 @@ export default function App() {
     });
     refreshSettings();
     refreshStats();
-    if (isTauri) autostartEnabled().then(setAutostart).catch(() => {});
+    if (isTauri) {
+      autostartEnabled().then(setAutostart).catch(() => {});
+      isLocked().then(setLocked).catch(() => {});
+    }
   }, []);
 
   const refreshSettings = useCallback(async () => {
@@ -146,6 +159,7 @@ export default function App() {
     getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) {
         setQuery("");
+        isLocked().then(setLocked).catch(() => {});
         void refreshEntries();
         void refreshStats();
         // focus search on the next tick after render
@@ -245,6 +259,49 @@ export default function App() {
     }
   }, [hotkeyDraft, refreshSettings]);
 
+  const handleUnlock = useCallback(async () => {
+    const p = passDraft;
+    if (!p) return;
+    try {
+      await unlock(p);
+      setLocked(false);
+      setPassDraft("");
+      setUnlockError(null);
+      void refreshEntries();
+      void refreshStats();
+    } catch (e: any) {
+      setUnlockError(typeof e === "string" ? e : e.message || "Wrong passphrase");
+    }
+  }, [passDraft, refreshEntries, refreshStats]);
+
+  const handleLock = useCallback(async () => {
+    try {
+      await lock();
+      setLocked(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleSetPassphrase = useCallback(async (p: string) => {
+    try {
+      await setPassphrase(p);
+      await refreshSettings();
+      showToast("Passphrase protection enabled", "success");
+    } catch (e: any) {
+      showToast(`Could not set passphrase: ${e.message || e}`, "error");
+      throw e;
+    }
+  }, [refreshSettings]);
+
+  const handleClearPassphrase = useCallback(async () => {
+    try {
+      await clearPassphrase();
+      await refreshSettings();
+      showToast("Passphrase protection removed", "success");
+    } catch (e: any) {
+      showToast(`Could not remove passphrase: ${e.message || e}`, "error");
+    }
+  }, [refreshSettings]);
+
   // ----- keyboard navigation (search input keeps focus) -----
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") { e.preventDefault(); hideWindow(); return; }
@@ -309,6 +366,16 @@ export default function App() {
             onApplyHotkey={handleApplyHotkey}
             onClear={handleClear}
             stats={stats}
+            onSetPassphrase={handleSetPassphrase}
+            onClearPassphrase={handleClearPassphrase}
+            onLock={handleLock}
+          />
+        ) : locked ? (
+          <LockedView
+            passDraft={passDraft}
+            onPassDraftChange={setPassDraft}
+            unlockError={unlockError}
+            onUnlock={handleUnlock}
           />
         ) : (
           <>
@@ -377,6 +444,42 @@ export default function App() {
   );
 }
 
+// ---------- locked view ----------
+
+interface LockedViewProps {
+  passDraft: string;
+  onPassDraftChange: (v: string) => void;
+  unlockError: string | null;
+  onUnlock: () => void;
+}
+
+function LockedView({ passDraft, onPassDraftChange, unlockError, onUnlock }: LockedViewProps) {
+  return (
+    <div className="clip__locked">
+      <IconLock size={26} />
+      <div className="clip__empty-title">Clip is locked</div>
+      <div className="clip__empty-sub">Enter your passphrase to unlock history.</div>
+      <div className="clip__locked-row">
+        <input
+          className="input input--sm"
+          type="password"
+          placeholder="Passphrase"
+          value={passDraft}
+          onChange={(e) => onPassDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); onUnlock(); }
+            if (e.key === "Escape") { e.preventDefault(); if (isTauri) void getCurrentWindow().hide(); }
+          }}
+          autoFocus
+          spellCheck={false}
+        />
+        <button className="btn btn--primary btn--sm" onClick={onUnlock}>Unlock</button>
+      </div>
+      {unlockError && <div className="clip__locked-error">{unlockError}</div>}
+    </div>
+  );
+}
+
 // ---------- entry row ----------
 
 interface EntryRowProps {
@@ -401,11 +504,26 @@ function EntryRow({ entry, index, active, onPaste, onTogglePin, onDelete, onMous
       title="Click or press Enter to paste"
     >
       <div className="clip__entry-body">
-        <div className="clip__entry-preview">{entry.preview || "(empty)"}</div>
+        {entry.kind === "image" ? (
+          <div className="clip__entry-preview clip__entry-preview--image">
+            {entry.content ? (
+              <img
+                className="clip__entry-thumb"
+                src={`data:image/png;base64,${entry.content}`}
+                alt={entry.preview}
+              />
+            ) : (
+              <IconImage size={18} />
+            )}
+          </div>
+        ) : (
+          <div className="clip__entry-preview">{entry.preview || "(empty)"}</div>
+        )}
         <div className="clip__entry-meta">
           <span>{timeAgo(entry.created_at)}</span>
           <span className="clip__entry-dot">·</span>
-          <span>{entry.char_count.toLocaleString()} chars</span>
+          <span>{entry.kind === "image" ? entry.preview : `${entry.char_count.toLocaleString()} chars`}</span>
+          {entry.source && <><span className="clip__entry-dot">·</span><span className="clip__entry-source">{entry.source}</span></>}
           {entry.pinned && <><span className="clip__entry-dot">·</span><span className="clip__entry-pin">pinned</span></>}
         </div>
       </div>
@@ -481,6 +599,9 @@ interface SettingsViewProps {
   onApplyHotkey: () => void;
   onClear: () => void;
   stats: ClipStats | null;
+  onSetPassphrase: (p: string) => Promise<void>;
+  onClearPassphrase: () => Promise<void>;
+  onLock: () => void;
 }
 
 function SettingsView(props: SettingsViewProps) {
@@ -488,7 +609,10 @@ function SettingsView(props: SettingsViewProps) {
     theme, onThemeChange, settings, onSettingsChange,
     autostart, onAutostartChange, hotkeyDraft, onHotkeyDraftChange,
     onApplyHotkey, onClear, stats,
+    onSetPassphrase, onClearPassphrase, onLock,
   } = props;
+  const [passDraft, setPassDraft] = useState("");
+  const [confirmDraft, setConfirmDraft] = useState("");
 
   return (
     <div className="clip__settings">
@@ -577,6 +701,59 @@ function SettingsView(props: SettingsViewProps) {
           />
           <span>Launch Clip when you sign in</span>
         </label>
+      </div>
+
+      <div className="clip__settings-section">
+        <div className="clip__settings-title">Passphrase protection</div>
+        {settings?.has_passphrase ? (
+          <>
+            <p className="clip__settings-note">
+              History is locked until you enter your passphrase on launch.
+            </p>
+            <div className="clip__settings-row">
+              <button className="btn btn--secondary btn--sm" onClick={onLock}>Lock now</button>
+              <button className="btn btn--secondary btn--sm" onClick={() => void onClearPassphrase()}>Remove passphrase</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="clip__settings-row">
+              <input
+                className="input input--sm"
+                type="password"
+                placeholder="New passphrase"
+                value={passDraft}
+                onChange={(e) => setPassDraft(e.target.value)}
+                spellCheck={false}
+              />
+              <input
+                className="input input--sm"
+                type="password"
+                placeholder="Repeat it"
+                value={confirmDraft}
+                onChange={(e) => setConfirmDraft(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="clip__settings-row">
+              <button
+                className="btn btn--secondary btn--sm"
+                disabled={passDraft.length < 4 || passDraft !== confirmDraft}
+                onClick={async () => {
+                  await onSetPassphrase(passDraft);
+                  setPassDraft("");
+                  setConfirmDraft("");
+                }}
+              >
+                Enable passphrase
+              </button>
+            </div>
+            <p className="clip__settings-note">
+              Entries stay encrypted as before; the key just needs your passphrase to unlock.
+              If you forget it, the stored history cannot be recovered.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="clip__settings-section">
